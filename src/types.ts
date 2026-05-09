@@ -5,38 +5,42 @@
 export interface RadarDOUConfig {
   /** Sua API Key de assinante */
   apiKey: string;
-  /** URL base da API (padrão: https://api.radar-dou.com/v1) */
+  /** URL base da API (padrao: https://www.radar-dou.com/api/v1) */
   baseUrl?: string;
-  /** Timeout em milissegundos (padrão: 30000) */
+  /** Timeout em milissegundos (padrao: 30000) */
   timeout?: number;
-  /** Iniciar sessão automaticamente (padrão: true) */
+  /** Iniciar sessao automaticamente (padrao: true) */
   autoSession?: boolean;
 }
 
 export interface SearchParams {
-  /** Termo de busca */
-  termo: string;
+  /** Termo de busca em titulo/conteudo */
+  query?: string;
   /** Data inicial (YYYY-MM-DD) */
-  dataInicio?: string;
+  dateFrom?: string;
   /** Data final (YYYY-MM-DD) */
-  dataFim?: string;
-  /** Filtrar por órgão */
-  orgao?: string;
-  /** Tipo de publicação */
+  dateTo?: string;
+  /** Secao do DOU: "DO1" | "DO2" | "DO3" | "Extra" */
+  secao?: string;
+  /** Tipo do ato (Portaria, Edital, etc.) */
   tipo?: string;
-  /** Seção do DOU (1, 2 ou 3) */
-  secao?: number;
-  /** Número da página */
-  pagina?: number;
-  /** Quantidade por página (máx: 100) */
-  limite?: number;
+  /** Numero da pagina (1+) */
+  page?: number;
+  /** Quantidade por pagina (max: 100) */
+  limit?: number;
 }
 
 export interface SearchResult {
-  resultados: Publication[];
-  total: number;
-  pagina: number;
-  total_paginas: number;
+  data: Publication[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  meta?: {
+    responseTime?: string;
+  };
 }
 
 export interface Publication {
@@ -45,59 +49,50 @@ export interface Publication {
   subtitulo?: string;
   texto_resumo?: string;
   texto_html?: string;
+  texto_puro?: string;
   data_publicacao: string;
-  data_diario: string;
+  data_diario?: string;
   secao_codigo: string;
   secao_descricao: string;
   edicao_numero: string;
   numero_pagina?: string;
   tipo_ato?: string;
   orgao_hierarquia?: string;
+  orgao_hierarquia_lista?: string;
+  urltitulo?: string;
   link_ato?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Alert {
   id: string;
-  nome: string;
-  termos: string[];
-  orgaos?: string[];
-  tipos?: string[];
-  secoes?: number[];
-  email_notificacao: boolean;
-  ativo: boolean;
-  created_at: string;
+  name: string;
+  description?: string;
+  searchCriteria: Record<string, unknown>;
+  isActive: boolean;
+  frequency: 'realtime' | 'hourly' | 'daily' | 'weekly';
+  lastChecked?: string;
+  matchCount?: number;
+  emailNotification: boolean;
+  soundAlert: boolean;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CreateAlertParams {
   /** Nome do alerta */
-  nome: string;
-  /** Termos para monitorar */
-  termos: string[];
-  /** Órgãos para filtrar */
-  orgaos?: string[];
-  /** Tipos de publicação */
-  tipos?: string[];
-  /** Seções do DOU */
-  secoes?: number[];
-  /** Receber notificação por email */
-  emailNotificacao?: boolean;
-}
-
-export interface UsageInfo {
-  requisicoes_hoje: number;
-  requisicoes_mes: number;
-  limite_hora: number;
-  limite_mes: number;
-  plano: string;
-}
-
-export interface AccountInfo {
-  id: string;
-  email: string;
-  nome: string;
-  plano: string;
-  status: string;
-  max_sessoes: number;
+  name: string;
+  /** Criterios de busca (query, secao, tipo, etc.) */
+  searchCriteria: Record<string, unknown>;
+  /** Descricao opcional */
+  description?: string;
+  /** Frequencia */
+  frequency?: 'realtime' | 'hourly' | 'daily' | 'weekly';
+  /** Receber por email */
+  emailNotification?: boolean;
+  /** Tocar som ao detectar match */
+  soundAlert?: boolean;
 }
 
 export interface SessionInfo {
@@ -112,11 +107,4 @@ export interface DeviceInfo {
   osVersion?: string;
   nodeVersion?: string;
   sdkVersion?: string;
-}
-
-export interface APIError {
-  message: string;
-  code: string;
-  details?: Record<string, unknown>;
-  status?: number;
 }

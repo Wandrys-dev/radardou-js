@@ -4,36 +4,40 @@
 interface RadarDOUConfig {
     /** Sua API Key de assinante */
     apiKey: string;
-    /** URL base da API (padrão: https://api.radar-dou.com/v1) */
+    /** URL base da API (padrao: https://www.radar-dou.com/api/v1) */
     baseUrl?: string;
-    /** Timeout em milissegundos (padrão: 30000) */
+    /** Timeout em milissegundos (padrao: 30000) */
     timeout?: number;
-    /** Iniciar sessão automaticamente (padrão: true) */
+    /** Iniciar sessao automaticamente (padrao: true) */
     autoSession?: boolean;
 }
 interface SearchParams {
-    /** Termo de busca */
-    termo: string;
+    /** Termo de busca em titulo/conteudo */
+    query?: string;
     /** Data inicial (YYYY-MM-DD) */
-    dataInicio?: string;
+    dateFrom?: string;
     /** Data final (YYYY-MM-DD) */
-    dataFim?: string;
-    /** Filtrar por órgão */
-    orgao?: string;
-    /** Tipo de publicação */
+    dateTo?: string;
+    /** Secao do DOU: "DO1" | "DO2" | "DO3" | "Extra" */
+    secao?: string;
+    /** Tipo do ato (Portaria, Edital, etc.) */
     tipo?: string;
-    /** Seção do DOU (1, 2 ou 3) */
-    secao?: number;
-    /** Número da página */
-    pagina?: number;
-    /** Quantidade por página (máx: 100) */
-    limite?: number;
+    /** Numero da pagina (1+) */
+    page?: number;
+    /** Quantidade por pagina (max: 100) */
+    limit?: number;
 }
 interface SearchResult {
-    resultados: Publication[];
-    total: number;
-    pagina: number;
-    total_paginas: number;
+    data: Publication[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+    meta?: {
+        responseTime?: string;
+    };
 }
 interface Publication {
     id: string;
@@ -41,55 +45,48 @@ interface Publication {
     subtitulo?: string;
     texto_resumo?: string;
     texto_html?: string;
+    texto_puro?: string;
     data_publicacao: string;
-    data_diario: string;
+    data_diario?: string;
     secao_codigo: string;
     secao_descricao: string;
     edicao_numero: string;
     numero_pagina?: string;
     tipo_ato?: string;
     orgao_hierarquia?: string;
+    orgao_hierarquia_lista?: string;
+    urltitulo?: string;
     link_ato?: string;
+    created_at?: string;
+    updated_at?: string;
 }
 interface Alert {
     id: string;
-    nome: string;
-    termos: string[];
-    orgaos?: string[];
-    tipos?: string[];
-    secoes?: number[];
-    email_notificacao: boolean;
-    ativo: boolean;
-    created_at: string;
+    name: string;
+    description?: string;
+    searchCriteria: Record<string, unknown>;
+    isActive: boolean;
+    frequency: 'realtime' | 'hourly' | 'daily' | 'weekly';
+    lastChecked?: string;
+    matchCount?: number;
+    emailNotification: boolean;
+    soundAlert: boolean;
+    createdAt: string;
+    updatedAt?: string;
 }
 interface CreateAlertParams {
     /** Nome do alerta */
-    nome: string;
-    /** Termos para monitorar */
-    termos: string[];
-    /** Órgãos para filtrar */
-    orgaos?: string[];
-    /** Tipos de publicação */
-    tipos?: string[];
-    /** Seções do DOU */
-    secoes?: number[];
-    /** Receber notificação por email */
-    emailNotificacao?: boolean;
-}
-interface UsageInfo {
-    requisicoes_hoje: number;
-    requisicoes_mes: number;
-    limite_hora: number;
-    limite_mes: number;
-    plano: string;
-}
-interface AccountInfo {
-    id: string;
-    email: string;
-    nome: string;
-    plano: string;
-    status: string;
-    max_sessoes: number;
+    name: string;
+    /** Criterios de busca (query, secao, tipo, etc.) */
+    searchCriteria: Record<string, unknown>;
+    /** Descricao opcional */
+    description?: string;
+    /** Frequencia */
+    frequency?: 'realtime' | 'hourly' | 'daily' | 'weekly';
+    /** Receber por email */
+    emailNotification?: boolean;
+    /** Tocar som ao detectar match */
+    soundAlert?: boolean;
 }
 interface SessionInfo {
     session_id: string;
@@ -114,97 +111,65 @@ declare class RadarDOU {
     private timeout;
     private sessionManager;
     /**
-     * Cria uma nova instância do cliente RadarDOU.
+     * Cria uma nova instancia do cliente RadarDOU.
      *
      * @example
      * ```typescript
-     * const client = new RadarDOU({ apiKey: 'sua_api_key' });
+     * const client = new RadarDOU({ apiKey: process.env.RADAR_API_KEY! });
      *
-     * // Buscar publicações
-     * const resultado = await client.buscar({ termo: 'licitação' });
+     * // Pelo menos um filtro e obrigatorio
+     * const resultado = await client.buscar({ dateFrom: '2026-05-01', limit: 10 });
      *
-     * // Ao finalizar
      * await client.close();
      * ```
      */
     constructor(config: RadarDOUConfig);
-    /**
-     * Inicializa a sessão (async)
-     */
     private initSession;
-    /**
-     * Faz uma requisição para a API
-     */
-    _request<T = any>(method: string, endpoint: string, body?: Record<string, unknown>, params?: Record<string, string | number | undefined>): Promise<T>;
-    /**
-     * Trata erros da API
-     */
+    _request<T = any>(method: string, endpoint: string, body?: Record<string, unknown>, params?: Record<string, string | number | boolean | undefined>): Promise<T>;
     private handleError;
     /**
-     * Busca publicações no DOU.
+     * Busca publicacoes no DOU. Pelo menos um filtro e obrigatorio:
+     * query, dateFrom, dateTo, secao ou tipo.
      *
      * @example
      * ```typescript
      * const resultado = await client.buscar({
-     *   termo: 'licitação',
-     *   orgao: 'Ministério da Saúde',
-     *   dataInicio: '2024-01-01'
+     *   query: 'licitacao',
+     *   dateFrom: '2026-05-01',
+     *   limit: 10
      * });
      * ```
      */
     buscar(params: SearchParams): Promise<SearchResult>;
     /**
-     * Obtém detalhes de uma publicação específica.
+     * Obtem detalhes completos de uma publicacao (texto_html e texto_puro inclusos).
      */
     obterPublicacao(id: string): Promise<Publication>;
     /**
-     * Lista edições do DOU.
+     * Lista alertas configurados pelo usuario.
      */
-    listarEdicoes(params?: {
-        data?: string;
-        secao?: number;
-        pagina?: number;
-        limite?: number;
+    listarAlertas(opts?: {
+        page?: number;
+        limit?: number;
+        activeOnly?: boolean;
     }): Promise<{
-        edicoes: any[];
-        total: number;
+        data: Alert[];
+        pagination: any;
     }>;
     /**
-     * Lista todos os alertas configurados.
-     */
-    listarAlertas(): Promise<{
-        alertas: Alert[];
-    }>;
-    /**
-     * Cria um novo alerta de monitoramento.
+     * Cria um novo alerta.
      */
     criarAlerta(params: CreateAlertParams): Promise<Alert>;
-    /**
-     * Atualiza um alerta existente.
-     */
-    atualizarAlerta(id: string, params: Partial<CreateAlertParams>): Promise<Alert>;
-    /**
-     * Exclui um alerta.
-     */
-    excluirAlerta(id: string): Promise<{
-        success: boolean;
-    }>;
-    /**
-     * Obtém informações de uso da API.
-     */
-    obterUso(): Promise<UsageInfo>;
-    /**
-     * Obtém informações da conta.
-     */
-    obterConta(): Promise<AccountInfo>;
-    /**
-     * Valida se a sessão atual ainda é válida.
-     */
+    listarFavoritos(opts?: {
+        page?: number;
+        limit?: number;
+    }): Promise<any>;
+    adicionarFavorito(publicationId: string, notes?: string): Promise<any>;
+    removerFavorito(publicationId: string): Promise<any>;
+    listarColecoes(): Promise<any>;
+    criarColecao(name: string, description?: string): Promise<any>;
+    vocabulario(): Promise<any>;
     validarSessao(): Promise<boolean>;
-    /**
-     * Encerra a sessão e libera recursos.
-     * Deve ser chamado ao finalizar o uso do cliente.
-     */
     close(): Promise<void>;
 }
 
@@ -248,4 +213,4 @@ declare class APIError extends RadarDOUError {
     constructor(message: string, statusCode?: number, code?: string, details?: Record<string, unknown>);
 }
 
-export { APIError, type AccountInfo, type Alert, AuthenticationError, type CreateAlertParams, type DeviceInfo, type Publication, RadarDOU, type RadarDOUConfig, RadarDOUError, RateLimitError, type SearchParams, type SearchResult, SessionConflictError, type SessionInfo, type UsageInfo };
+export { APIError, type Alert, AuthenticationError, type CreateAlertParams, type DeviceInfo, type Publication, RadarDOU, type RadarDOUConfig, RadarDOUError, RateLimitError, type SearchParams, type SearchResult, SessionConflictError, type SessionInfo };

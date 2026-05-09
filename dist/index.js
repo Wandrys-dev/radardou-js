@@ -201,28 +201,27 @@ var SessionManager = class {
 };
 
 // src/client.ts
-var DEFAULT_BASE_URL = "https://api.radar-dou.com/v1";
+var DEFAULT_BASE_URL = "https://www.radar-dou.com/api/v1";
 var DEFAULT_TIMEOUT = 3e4;
-var SDK_VERSION2 = "1.0.0";
+var SDK_VERSION2 = "1.0.1";
 var RadarDOU = class {
   /**
-   * Cria uma nova instância do cliente RadarDOU.
+   * Cria uma nova instancia do cliente RadarDOU.
    *
    * @example
    * ```typescript
-   * const client = new RadarDOU({ apiKey: 'sua_api_key' });
+   * const client = new RadarDOU({ apiKey: process.env.RADAR_API_KEY! });
    *
-   * // Buscar publicações
-   * const resultado = await client.buscar({ termo: 'licitação' });
+   * // Pelo menos um filtro e obrigatorio
+   * const resultado = await client.buscar({ dateFrom: '2026-05-01', limit: 10 });
    *
-   * // Ao finalizar
    * await client.close();
    * ```
    */
   constructor(config) {
     if (!config.apiKey) {
       throw new AuthenticationError(
-        "API Key \xE9 obrigat\xF3ria. Obtenha sua chave em https://radar-dou.com/api-keys",
+        "API Key e obrigatoria. Obtenha em https://www.radar-dou.com/api-keys",
         "API_KEY_REQUIRED"
       );
     }
@@ -234,9 +233,6 @@ var RadarDOU = class {
       this.initSession();
     }
   }
-  /**
-   * Inicializa a sessão (async)
-   */
   async initSession() {
     try {
       await this.sessionManager.startSession();
@@ -246,14 +242,11 @@ var RadarDOU = class {
       }
     }
   }
-  /**
-   * Faz uma requisição para a API
-   */
   async _request(method, endpoint, body, params) {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        if (value !== void 0) {
+        if (value !== void 0 && value !== null) {
           url.searchParams.append(key, String(value));
         }
       });
@@ -273,7 +266,7 @@ var RadarDOU = class {
         signal: controller.signal
       });
       clearTimeout(timeoutId);
-      const data = await response.json().catch(() => ({ message: "Erro desconhecido" }));
+      const data = await response.json().catch(() => ({ error: "Erro desconhecido" }));
       if (response.ok) {
         return data;
       }
@@ -281,25 +274,25 @@ var RadarDOU = class {
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === "AbortError") {
-        throw new APIError("Timeout na requisi\xE7\xE3o", void 0, "TIMEOUT");
+        throw new APIError("Timeout na requisicao", void 0, "TIMEOUT");
       }
       if (error instanceof RadarDOUError) {
         throw error;
       }
       throw new APIError(
-        error.message || "Erro de conex\xE3o",
+        error.message || "Erro de conexao",
         void 0,
         "CONNECTION_ERROR"
       );
     }
   }
-  /**
-   * Trata erros da API
-   */
   handleError(status, data) {
-    const message = data.message || "Erro desconhecido";
+    const message = data.error || data.message || "Erro desconhecido";
     const code = data.code || "UNKNOWN_ERROR";
     const details = data.details;
+    if (status === 400) {
+      throw new APIError(message, 400, code, details);
+    }
     if (status === 401) {
       throw new AuthenticationError(message, code, details);
     }
@@ -315,111 +308,101 @@ var RadarDOU = class {
     throw new APIError(message, status, code, details);
   }
   // ========================================
-  // Métodos de Busca
+  // Publicacoes
   // ========================================
   /**
-   * Busca publicações no DOU.
+   * Busca publicacoes no DOU. Pelo menos um filtro e obrigatorio:
+   * query, dateFrom, dateTo, secao ou tipo.
    *
    * @example
    * ```typescript
    * const resultado = await client.buscar({
-   *   termo: 'licitação',
-   *   orgao: 'Ministério da Saúde',
-   *   dataInicio: '2024-01-01'
+   *   query: 'licitacao',
+   *   dateFrom: '2026-05-01',
+   *   limit: 10
    * });
    * ```
    */
   async buscar(params) {
-    return this._request("GET", "/search", void 0, {
-      q: params.termo,
-      data_inicio: params.dataInicio,
-      data_fim: params.dataFim,
-      orgao: params.orgao,
-      tipo: params.tipo,
+    if (!params.query && !params.dateFrom && !params.dateTo && !params.secao && !params.tipo) {
+      throw new APIError(
+        "Pelo menos um filtro e obrigatorio: query, dateFrom, dateTo, secao ou tipo.",
+        400,
+        "FILTER_REQUIRED"
+      );
+    }
+    return this._request("GET", "/publications", void 0, {
+      query: params.query,
+      date_from: params.dateFrom,
+      date_to: params.dateTo,
       secao: params.secao,
-      pagina: params.pagina || 1,
-      limite: Math.min(params.limite || 20, 100)
+      tipo: params.tipo,
+      page: params.page || 1,
+      limit: Math.min(params.limit || 20, 100)
     });
   }
   /**
-   * Obtém detalhes de uma publicação específica.
+   * Obtem detalhes completos de uma publicacao (texto_html e texto_puro inclusos).
    */
   async obterPublicacao(id) {
-    return this._request("GET", `/publicacoes/${id}`);
+    return this._request("GET", `/publications/${id}`);
   }
+  // ========================================
+  // Alertas
+  // ========================================
   /**
-   * Lista edições do DOU.
+   * Lista alertas configurados pelo usuario.
    */
-  async listarEdicoes(params) {
-    return this._request("GET", "/edicoes", void 0, {
-      data: params?.data,
-      secao: params?.secao,
-      pagina: params?.pagina || 1,
-      limite: params?.limite || 20
+  async listarAlertas(opts) {
+    return this._request("GET", "/alerts", void 0, {
+      page: opts?.page || 1,
+      limit: Math.min(opts?.limit || 20, 100),
+      active: opts?.activeOnly ? "true" : void 0
     });
   }
-  // ========================================
-  // Métodos de Alertas
-  // ========================================
   /**
-   * Lista todos os alertas configurados.
-   */
-  async listarAlertas() {
-    return this._request("GET", "/alertas");
-  }
-  /**
-   * Cria um novo alerta de monitoramento.
+   * Cria um novo alerta.
    */
   async criarAlerta(params) {
-    return this._request("POST", "/alertas", {
-      nome: params.nome,
-      termos: params.termos,
-      orgaos: params.orgaos,
-      tipos: params.tipos,
-      secoes: params.secoes,
-      email_notificacao: params.emailNotificacao ?? true
+    return this._request("POST", "/alerts", {
+      name: params.name,
+      searchCriteria: params.searchCriteria,
+      description: params.description,
+      frequency: params.frequency || "daily",
+      emailNotification: params.emailNotification ?? true,
+      soundAlert: params.soundAlert ?? false
     });
   }
-  /**
-   * Atualiza um alerta existente.
-   */
-  async atualizarAlerta(id, params) {
-    return this._request("PATCH", `/alertas/${id}`, params);
-  }
-  /**
-   * Exclui um alerta.
-   */
-  async excluirAlerta(id) {
-    return this._request("DELETE", `/alertas/${id}`);
-  }
   // ========================================
-  // Métodos de Conta e Uso
+  // Favoritos, Colecoes, Vocabulario
   // ========================================
-  /**
-   * Obtém informações de uso da API.
-   */
-  async obterUso() {
-    return this._request("GET", "/uso");
+  async listarFavoritos(opts) {
+    return this._request("GET", "/favorites", void 0, {
+      page: opts?.page || 1,
+      limit: Math.min(opts?.limit || 20, 100)
+    });
   }
-  /**
-   * Obtém informações da conta.
-   */
-  async obterConta() {
-    return this._request("GET", "/conta");
+  async adicionarFavorito(publicationId, notes) {
+    return this._request("POST", "/favorites", { publicationId, notes });
+  }
+  async removerFavorito(publicationId) {
+    return this._request("DELETE", "/favorites", void 0, { publicationId });
+  }
+  async listarColecoes() {
+    return this._request("GET", "/collections");
+  }
+  async criarColecao(name, description) {
+    return this._request("POST", "/collections", { name, description });
+  }
+  async vocabulario() {
+    return this._request("GET", "/vocabulary");
   }
   // ========================================
-  // Gerenciamento de Sessão
+  // Sessao
   // ========================================
-  /**
-   * Valida se a sessão atual ainda é válida.
-   */
   async validarSessao() {
     return this.sessionManager.validateSession();
   }
-  /**
-   * Encerra a sessão e libera recursos.
-   * Deve ser chamado ao finalizar o uso do cliente.
-   */
   async close() {
     await this.sessionManager.endSession();
   }

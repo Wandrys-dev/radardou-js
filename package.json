@@ -1,6 +1,6 @@
 {
   "name": "@radardou/sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SDK oficial para a API do Radar DOU - Monitoramento do Diário Oficial da União",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

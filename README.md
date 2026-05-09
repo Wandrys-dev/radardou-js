@@ -1,122 +1,108 @@
-# @radardou/sdk
+# radardou-js
 
-SDK oficial JavaScript/TypeScript para a API do [Radar DOU](https://radar-dou.com) - Sistema de Monitoramento do Diário Oficial da União.
+SDK oficial JavaScript/TypeScript para a API do [Radar DOU](https://www.radar-dou.com) — Sistema de Monitoramento do Diário Oficial da União.
 
 ## Requisitos
 
-- Node.js 16+
-- API Key válida de assinante do Radar DOU
+- Node.js >= 18 (para `fetch` nativo) — ou navegador moderno
+- API Key válida de assinante (gere em [www.radar-dou.com/api-keys](https://www.radar-dou.com/api-keys))
 
 ## Instalação
 
 ```bash
-npm install @radardou/sdk
-# ou
-yarn add @radardou/sdk
-# ou
-pnpm add @radardou/sdk
+npm install github:Wandrys-dev/radardou-js
 ```
 
-## Início Rápido
+## Início rápido
 
 ```typescript
-import { RadarDOU } from '@radardou/sdk';
+import { RadarDOU } from 'radardou';
 
-// Inicialize o cliente com sua API Key
-const client = new RadarDOU({ apiKey: 'sua_api_key_aqui' });
+const client = new RadarDOU({ apiKey: process.env.RADAR_API_KEY! });
 
-// Buscar publicações
-const resultado = await client.buscar({ termo: 'licitação' });
-console.log(`Encontrados ${resultado.total} resultados`);
+// IMPORTANTE: pelo menos um filtro é obrigatório
+const resultado = await client.buscar({
+  dateFrom: '2026-05-01',
+  limit: 10,
+});
 
-// Ao finalizar, encerre a sessão
+console.log(`Total: ${resultado.pagination.total}`);
+resultado.data.forEach(p => console.log(`[${p.secao_codigo}] ${p.titulo}`));
+
 await client.close();
 ```
 
-## Funcionalidades
-
-### Busca de Publicações
+## Buscar publicações
 
 ```typescript
-// Busca simples
-const resultado = await client.buscar({ termo: 'edital' });
+// Por data
+await client.buscar({ dateFrom: '2026-05-01', dateTo: '2026-05-08' });
 
-// Busca com filtros
-const resultado = await client.buscar({
-  termo: 'pregão eletrônico',
-  dataInicio: '2024-01-01',
-  dataFim: '2024-12-31',
-  orgao: 'Ministério da Educação',
-  tipo: 'edital',
-  secao: 3,
-  pagina: 1,
-  limite: 50
+// Por palavra-chave
+await client.buscar({ query: 'licitação', dateFrom: '2026-05-01' });
+
+// Filtros combinados
+await client.buscar({
+  query: 'edital',
+  secao: 'DO3',         // DO1, DO2, DO3 ou Extra
+  tipo: 'Edital',       // Portaria, Edital, Despacho, etc.
+  dateFrom: '2026-01-01',
+  dateTo: '2026-05-08',
+  page: 1,
+  limit: 50,            // máx 100
 });
-
-// Obter publicação específica
-const publicacao = await client.obterPublicacao('abc123');
 ```
 
-### Gerenciamento de Alertas
+**Filtro mínimo obrigatório.** Chamar `buscar({})` sem nenhum filtro lança `APIError("FILTER_REQUIRED")`.
+Isso evita scans amplos da tabela de publicações (~7M+ linhas).
+
+## Detalhes de uma publicação
+
+A listagem retorna apenas `texto_resumo`. Para o **texto completo**:
 
 ```typescript
-// Listar alertas
-const { alertas } = await client.listarAlertas();
-
-// Criar alerta
-const alerta = await client.criarAlerta({
-  nome: 'Monitorar Licitações Saúde',
-  termos: ['licitação', 'pregão'],
-  orgaos: ['Ministério da Saúde'],
-  emailNotificacao: true
-});
-
-// Atualizar alerta
-await client.atualizarAlerta(alerta.id, { nome: 'Novo Nome' });
-
-// Excluir alerta
-await client.excluirAlerta(alerta.id);
-```
-
-### Informações de Uso
-
-```typescript
-// Ver uso da API
-const uso = await client.obterUso();
-console.log(`Requisições hoje: ${uso.requisicoes_hoje}`);
-console.log(`Limite por hora: ${uso.limite_hora}`);
-
-// Informações da conta
-const conta = await client.obterConta();
-console.log(`Plano: ${conta.plano}`);
-```
-
-## Controle de Sessão
-
-O SDK implementa controle automático de sessão para garantir que sua API Key seja usada apenas por você:
-
-- **Fingerprint de dispositivo**: Identifica unicamente seu computador
-- **Heartbeat automático**: Mantém sua sessão ativa
-- **Detecção de uso compartilhado**: Impede que outros usem sua API Key simultaneamente
-
-### Comportamento de Sessão
-
-Quando você inicializa o cliente, uma sessão é automaticamente criada. Se outro dispositivo tentar usar a mesma API Key, receberá um erro `SessionConflictError`.
-
-```typescript
-import { RadarDOU, SessionConflictError } from '@radardou/sdk';
-
-try {
-  const client = new RadarDOU({ apiKey: 'sua_api_key' });
-} catch (error) {
-  if (error instanceof SessionConflictError) {
-    console.log(`Erro: ${error.message}`);
-    console.log(`IP ativo: ${error.activeIp}`);
-  }
+const ids = resultado.data.map(p => p.id);
+for (const id of ids) {
+  const pub = await client.obterPublicacao(id);
+  console.log(pub.titulo);
+  console.log(pub.texto_puro);    // texto completo
+  console.log(pub.texto_html);    // HTML completo
 }
 ```
 
-## Tratamento de Erros
+## Alertas
+
+```typescript
+// Listar
+const { data: alertas } = await client.listarAlertas();
+
+// Criar
+const alerta = await client.criarAlerta({
+  name: 'Concursos TI',
+  searchCriteria: { query: 'desenvolvedor', secao: 'DO3' },
+  frequency: 'daily',          // realtime | hourly | daily | weekly
+  emailNotification: true,
+});
+```
+
+## Favoritos e coleções
+
+```typescript
+await client.listarFavoritos();
+await client.adicionarFavorito('12345');
+await client.removerFavorito('12345');
+
+await client.listarColecoes();
+await client.criarColecao('Editais 2026');
+```
+
+## Vocabulário
+
+```typescript
+const vocab = await client.vocabulario();  // seções e tipos disponíveis
+```
+
+## Tratamento de erros
 
 ```typescript
 import {
@@ -124,77 +110,29 @@ import {
   AuthenticationError,
   SessionConflictError,
   RateLimitError,
-  APIError
-} from '@radardou/sdk';
+  APIError,
+} from 'radardou';
 
 try {
-  const client = new RadarDOU({ apiKey: 'sua_api_key' });
-  const resultado = await client.buscar({ termo: 'teste' });
-} catch (error) {
-  if (error instanceof AuthenticationError) {
-    console.log(`Erro de autenticação: ${error.message}`);
-    // API Key inválida ou expirada
-  } else if (error instanceof SessionConflictError) {
-    console.log(`Conflito de sessão: ${error.message}`);
-    console.log(`Outro IP está usando: ${error.activeIp}`);
-  } else if (error instanceof RateLimitError) {
-    console.log(`Limite atingido: ${error.message}`);
-    console.log(`Limite: ${error.limit}`);
-    console.log(`Reset em: ${error.resetAt}`);
-  } else if (error instanceof APIError) {
-    console.log(`Erro da API: ${error.message}`);
-    console.log(`Status: ${error.statusCode}`);
-  }
+  const client = new RadarDOU({ apiKey: process.env.RADAR_API_KEY! });
+  const resultado = await client.buscar({ dateFrom: '2026-05-01' });
+} catch (e) {
+  if (e instanceof AuthenticationError) console.error('Chave inválida');
+  else if (e instanceof SessionConflictError) console.error(`Outra sessão ativa em ${e.activeIp}`);
+  else if (e instanceof RateLimitError) console.error(`Rate limit. Reset em ${e.resetAt}`);
+  else if (e instanceof APIError) console.error(`HTTP ${e.statusCode}: ${e.message}`);
 }
 ```
 
-## TypeScript
+## Limites por plano
 
-O SDK inclui tipos TypeScript completos:
-
-```typescript
-import type {
-  RadarDOUConfig,
-  SearchParams,
-  SearchResult,
-  Publication,
-  Alert
-} from '@radardou/sdk';
-
-const config: RadarDOUConfig = {
-  apiKey: 'sua_api_key',
-  timeout: 60000
-};
-
-const params: SearchParams = {
-  termo: 'licitação',
-  secao: 3
-};
-```
-
-## Limites por Plano
-
-| Plano | Requisições/hora | Sessões Simultâneas |
-|-------|------------------|---------------------|
-| Profissional | 1.000 | 1 |
-| Premium | 5.000 | 3 |
-| Enterprise | Ilimitado | Ilimitado |
-
-## Obtenha sua API Key
-
-Para usar este SDK, você precisa de uma API Key válida:
-
-1. Acesse [radar-dou.com](https://radar-dou.com)
-2. Crie uma conta ou faça login
-3. Assine um plano
-4. Gere sua API Key em [Configurações > API Keys](https://radar-dou.com/api-keys)
-
-## Suporte
-
-- 📧 Email: suporte@radar-dou.com
-- 📖 Documentação: [radar-dou.com/docs](https://radar-dou.com/docs)
-- 🐛 Issues: [GitHub Issues](https://github.com/radar-dou/radardou-js/issues)
+| Plano | Rate limit | Sessões | Chaves |
+|-------|-----------|---------|--------|
+| Trial (5 dias) | 100 req/h | 1 | 1 |
+| Profissional | 1.000 req/h | 1 | 2 |
+| Premium | 5.000 req/h | 3 | 5 |
+| Empresarial | 10.000 req/h | 10 | 10 |
 
 ## Licença
 
-MIT License - veja [LICENSE](LICENSE) para detalhes.
+MIT
