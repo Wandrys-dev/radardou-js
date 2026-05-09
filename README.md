@@ -13,10 +13,12 @@ SDK oficial JavaScript/TypeScript para a API do [Radar DOU](https://www.radar-do
 npm install github:Wandrys-dev/radardou-js
 ```
 
+> **Nome do pacote ≠ nome do repositório.** O repositório se chama `radardou-js`, mas o nome do pacote declarado em `package.json` é **`@radardou/sdk`**. Isso significa que após o `npm install ...` o pacote fica em `node_modules/@radardou/sdk/` e os `import`s devem usar `'@radardou/sdk'` (ver exemplos abaixo).
+
 ## Início rápido
 
 ```typescript
-import { RadarDOU } from 'radardou';
+import { RadarDOU } from '@radardou/sdk';
 
 const client = new RadarDOU({ apiKey: process.env.RADAR_API_KEY! });
 
@@ -111,7 +113,7 @@ import {
   SessionConflictError,
   RateLimitError,
   APIError,
-} from 'radardou';
+} from '@radardou/sdk';
 
 try {
   const client = new RadarDOU({ apiKey: process.env.RADAR_API_KEY! });
